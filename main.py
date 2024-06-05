@@ -1,20 +1,21 @@
 import pyautogui
 import pygetwindow as gw
 import time
-from pynput import keyboard
+
 from Gui import Gui
 import keyboard as k
 import threading
+from keyboard._keyboard_event import KEY_DOWN, KEY_UP
 
 Debug = True
-key_being_held = None
-modifier_holded = None
 forbidden_keys = ["z", "q", "s", "d", "space"]
+WoW = ["World of Warcraft", "Ascension", "Ascension Launcher", "Ascension (32 bits)"]
 modifiers = ["shift", "ctrl_l"]
 DELAY_BETWEEN_KEYS = 0.7
 
 APP_START = False
 keys_active = set()
+
 
 def start_app():
     global APP_START
@@ -28,51 +29,43 @@ def stop_app():
 
 def spam_key():
 
-    while key_being_held:
+    while len(keys_active) > 0:
+
+        log(keys_active)
         active_window = gw.getActiveWindow()
-        log(active_window.title)
-        if active_window.title == "World of Warcraft":
-            log(f"Key currently being held: {key_being_held}")
-            try:
 
-                    pyautogui.hotkey(key_being_held)
-
-            except TypeError:
-                log(f"Skipped invalid key: {key_being_held}")
-            time.sleep(DELAY_BETWEEN_KEYS)
+        if active_window:
+            if active_window.title in WoW:
+                log(f"Key currently being held: {keys_active}")
+                try:
+                    k.press_and_release("shift+f")
+                    # pyautogui.hotkey(*sorted(list(keys_active), key=len))
+                except TypeError:
+                    log(f"Skipped invalid key: {keys_active}")
+                time.sleep(DELAY_BETWEEN_KEYS)
 
 
 def on_press(key):
-    global key_being_held, modifier_holded, modifiers
-    try:
-        key_char = key.char  # Pour les KeyCode, qui représentent les touches caractères
-    except AttributeError:
-        key_char = key.name  # Pour les Key, qui représentent les touches spéciales
-
-    if key_char in forbidden_keys:
+    if key in forbidden_keys:
         return
-
-    if not modifier_holded or modifier_holded != key_char:
-        if any(mod in key_char for mod in modifiers):
-            modifier_holded = key_char
-            log(f"modifier registered {modifier_holded}")
-
-    if key_being_held is None and not any(mod in key_char for mod in modifiers):
-
-        key_being_held = key_char
-        log(f"{key_char} registered")
+    if key not in keys_active:
+        keys_active.add(key)
 
 
 def on_release(key):
-    global key_being_held, modifier_holded
 
-    if str(key) == modifier_holded:
-        modifier_holded = None
-        log(f"modifier unhooked")
+    if key in keys_active:
+        keys_active.remove(key)
+        log(f"Key released: {key}")
     else:
-        key_being_held = None
-    log("Key released")
-    log(key_being_held)
+        log(f"Tried to release a key not in active set: {key}")
+
+
+def on_action(e):
+    if e.event_type == KEY_DOWN:
+        on_press(e.name)
+    elif e.event_type == KEY_UP:
+        on_release(e.name)
 
 
 def log(message):
@@ -83,13 +76,14 @@ def log(message):
 gui_thread = threading.Thread(target=Gui, args=(start_app, stop_app))
 gui_thread.start()
 
-listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-listener.start()
+
+k.hook(lambda e: on_action(e))
 
 try:
     while True:
+
         if APP_START:
             spam_key()
         time.sleep(0.1)
 except KeyboardInterrupt:
-    listener.stop()
+    exit(1)
