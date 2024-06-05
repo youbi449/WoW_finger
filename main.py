@@ -6,9 +6,10 @@ import threading
 import os
 import pygetwindow as gw
 from keyboard._keyboard_event import KEY_DOWN, KEY_UP
+import keyboard
 
 Debug = True
-forbidden_keys = ["z", "q", "s", "d", "space", "ctrl", "maj", "shift"]
+forbidden_keys = [17, 30, 31, 32, 57]  # z, q, s, d, space keycodes
 WoW = ["World of Warcraft"]
 DELAY_BETWEEN_KEYS = 0.3
 
@@ -29,9 +30,8 @@ def stop_app():
 
 def spam_key():
 
-    resync()
     while len(keys_active) > 0:
-
+        resync()
         log(keys_active)
         active_window = gw.getActiveWindow()
 
@@ -39,15 +39,16 @@ def spam_key():
             if active_window.title in WoW:
 
                 try:
-                    hotkey = "+".join(
-                        [
-                            cmd.lower()
-                            for cmd in sorted(list(keys_active), key=len, reverse=True)
-                        ]
-                    )
-                    log(f"key sent {hotkey}")
-                    k.press_and_release(str(hotkey))
-                    time.sleep(0.1)
+                    hotkey = list(keys_active)
+                    log(f"LES CODES {hotkey}")
+                    if hotkey:  # Vérifie que hotkey n'est pas vide
+                        log(f"key sent {hotkey}")
+
+                        for hk in hotkey:
+                            k.send(int(hk))
+                        time.sleep(0.1)
+                    else:
+                        log("No valid hotkey to send.")
                 except TypeError:
                     log(f"Skipped invalid key: {keys_active}")
                 time.sleep(DELAY_BETWEEN_KEYS)
@@ -55,14 +56,14 @@ def spam_key():
 
 def on_press(key):
     global CHAT_PAUSE
-    if key == "enter":
+    if key == 28:  # keycode for "enter"
         CHAT_PAUSE = not CHAT_PAUSE
-    elif key == "esc" and CHAT_PAUSE:
+    elif key == 1 and CHAT_PAUSE:  # keycode for "esc"
         # that mean user start a message and didn't send it with enter
 
         CHAT_PAUSE = False
     else:
-        if key in forbidden_keys:
+        if key in forbidden_keys or k.is_modifier(key):
             return
         if key not in keys_active:
             keys_active.add(key)
@@ -79,9 +80,9 @@ def on_release(key):
 
 def on_action(e):
     if e.event_type == KEY_DOWN:
-        on_press(e.name)
+        on_press(e.scan_code)
     elif e.event_type == KEY_UP:
-        on_release(e.name)
+        on_release(e.scan_code)
 
 
 def log(message):
@@ -94,7 +95,11 @@ def resync():
     keys_to_check = list(keys_active)  # Crée une copie de la liste pour itérer
     for key in keys_to_check:
         if not k.is_pressed(key):
-            keys_active.remove(key)
+            if key in keys_active:  # Ajoute une vérification avant de supprimer
+                keys_active.remove(key)
+                log(f"WARNING A KEY DELETED: {key}")
+            else:
+                log(f"Key already removed: {key}")
 
 
 gui_thread = threading.Thread(target=Gui, args=(start_app, stop_app), daemon=True)
@@ -105,6 +110,7 @@ k.hook(lambda e: on_action(e))
 
 try:
     while True:
+        resync()
         if not gui_thread.is_alive():
             exit()
         if APP_START and not CHAT_PAUSE:
