@@ -1,5 +1,5 @@
-if exist build rmdir /s /q build
-if exist dist rmdir /s /q dist
+rmdir /s /q build
+rmdir /s /q dist
 
 
 pyinstaller --onefile --windowed main.py

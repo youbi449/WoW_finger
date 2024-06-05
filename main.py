@@ -1,19 +1,19 @@
-
 import time
 
 from Gui import Gui
 import keyboard as k
 import threading
-
+import os
 import pygetwindow as gw
 from keyboard._keyboard_event import KEY_DOWN, KEY_UP
 
 Debug = True
 forbidden_keys = ["z", "q", "s", "d", "space", "ctrl", "maj", "shift"]
 WoW = ["World of Warcraft"]
-DELAY_BETWEEN_KEYS = 0.7
+DELAY_BETWEEN_KEYS = 0.3
 
 APP_START = False
+CHAT_PAUSE = False
 keys_active = set()
 
 
@@ -29,6 +29,7 @@ def stop_app():
 
 def spam_key():
 
+    resync()
     while len(keys_active) > 0:
 
         log(keys_active)
@@ -53,10 +54,18 @@ def spam_key():
 
 
 def on_press(key):
-    if key in forbidden_keys:
-        return
-    if key not in keys_active:
-        keys_active.add(key)
+    global CHAT_PAUSE
+    if key == "enter":
+        CHAT_PAUSE = not CHAT_PAUSE
+    elif key == "esc" and CHAT_PAUSE:
+        # that mean user start a message and didn't send it with enter
+
+        CHAT_PAUSE = False
+    else:
+        if key in forbidden_keys:
+            return
+        if key not in keys_active:
+            keys_active.add(key)
 
 
 def on_release(key):
@@ -69,7 +78,6 @@ def on_release(key):
 
 
 def on_action(e):
-    resync()
     if e.event_type == KEY_DOWN:
         on_press(e.name)
     elif e.event_type == KEY_UP:
@@ -89,7 +97,7 @@ def resync():
             keys_active.remove(key)
 
 
-gui_thread = threading.Thread(target=Gui, args=(start_app, stop_app))
+gui_thread = threading.Thread(target=Gui, args=(start_app, stop_app), daemon=True)
 gui_thread.start()
 
 
@@ -97,8 +105,9 @@ k.hook(lambda e: on_action(e))
 
 try:
     while True:
-
-        if APP_START:
+        if not gui_thread.is_alive():
+            exit()
+        if APP_START and not CHAT_PAUSE:
             spam_key()
         time.sleep(0.1)
 except KeyboardInterrupt:
