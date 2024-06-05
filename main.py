@@ -1,16 +1,16 @@
-import pyautogui
-import pygetwindow as gw
+
 import time
 
 from Gui import Gui
 import keyboard as k
 import threading
+
+import pygetwindow as gw
 from keyboard._keyboard_event import KEY_DOWN, KEY_UP
 
 Debug = True
-forbidden_keys = ["z", "q", "s", "d", "space"]
-WoW = ["World of Warcraft", "Ascension", "Ascension Launcher", "Ascension (32 bits)"]
-modifiers = ["shift", "ctrl_l"]
+forbidden_keys = ["z", "q", "s", "d", "space", "ctrl", "maj", "shift"]
+WoW = ["World of Warcraft"]
 DELAY_BETWEEN_KEYS = 0.7
 
 APP_START = False
@@ -36,10 +36,17 @@ def spam_key():
 
         if active_window:
             if active_window.title in WoW:
-                log(f"Key currently being held: {keys_active}")
+
                 try:
-                    k.press_and_release("shift+f")
-                    # pyautogui.hotkey(*sorted(list(keys_active), key=len))
+                    hotkey = "+".join(
+                        [
+                            cmd.lower()
+                            for cmd in sorted(list(keys_active), key=len, reverse=True)
+                        ]
+                    )
+                    log(f"key sent {hotkey}")
+                    k.press_and_release(str(hotkey))
+                    time.sleep(0.1)
                 except TypeError:
                     log(f"Skipped invalid key: {keys_active}")
                 time.sleep(DELAY_BETWEEN_KEYS)
@@ -62,6 +69,7 @@ def on_release(key):
 
 
 def on_action(e):
+    resync()
     if e.event_type == KEY_DOWN:
         on_press(e.name)
     elif e.event_type == KEY_UP:
@@ -71,6 +79,14 @@ def on_action(e):
 def log(message):
     if Debug:
         print(message)
+
+
+def resync():
+    """Assure que le set est correctement synchronisé avec les entrées utilisateur"""
+    keys_to_check = list(keys_active)  # Crée une copie de la liste pour itérer
+    for key in keys_to_check:
+        if not k.is_pressed(key):
+            keys_active.remove(key)
 
 
 gui_thread = threading.Thread(target=Gui, args=(start_app, stop_app))
