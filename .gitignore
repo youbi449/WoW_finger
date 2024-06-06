@@ -2,3 +2,4 @@ __pycache
 build
 dist
 main.spec
+config.ini
