@@ -10,7 +10,7 @@ from plyer import notification
 
 
 Debug = True
-forbidden_keys = [17, 30, 31, 32, 57, 91]  # z, q, s, d, space keycodes
+forbidden_keys = [17, 30, 31, 32, 57, 91]  # w, a, s, d, space, windows keycodes
 WoW = ["World of Warcraft"]
 DELAY_BETWEEN_KEYS = 0.3
 
@@ -35,10 +35,7 @@ except FileNotFoundError:
 
 def notif(message):
     notification.notify(
-        title="Wow Finger",
-        message=message,
-        app_name="Wow Finger",
-        toast=True
+        title="Wow Finger", message=message, app_name="Wow Finger"
     )
 
 
@@ -74,7 +71,7 @@ def spam_key():
                 log(f"key sent {hotkey}")
 
                 for hk in hotkey:
-                    k.send(int(hk))
+                    k.send(hk)
                 resync()
                 time.sleep(0.1)
             else:
@@ -89,10 +86,8 @@ def on_press(key):
     if key in PAUSE_KEY:
 
         if is_correct_window():
-
             PAUSE = not PAUSE
             log(f"toggle pause {PAUSE}")
-            notif("App is now paused")
             if PAUSE:
                 notif("App is now paused")
             else:
@@ -100,7 +95,7 @@ def on_press(key):
     if key in forbidden_keys or k.is_modifier(key):
         return
 
-    elif key not in keys_active and not key in PAUSE_KEY:
+    elif key not in keys_active and key not in PAUSE_KEY:
         keys_active.add(key)
 
 
@@ -151,15 +146,18 @@ def update_config(settings_name, settings_value):
 
 
 def is_correct_window():
-    return gw.getActiveWindow().title in WoW if gw.getActiveWindow().title else ""
+    active_window = gw.getActiveWindow()
+    return (
+        active_window.title in WoW if active_window and active_window.title else False
+    )
 
 
 def resync():
     """Assure que le set est correctement synchronisé avec les entrées utilisateur"""
-    keys_to_check = list(keys_active)  # Crée une copie de la liste pour itérer
+    keys_to_check = list(keys_active)
     for key in keys_to_check:
         if not k.is_pressed(key):
-            if key in keys_active:  # Ajoute une vérification avant de supprimer
+            if key in keys_active:
                 keys_active.remove(key)
                 log(f"WARNING A KEY DELETED: {key}")
             else:

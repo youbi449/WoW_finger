@@ -1,4 +1,4 @@
-# README for the WoW Finger Project
+# WoW Finger
 
 ## Description
 
