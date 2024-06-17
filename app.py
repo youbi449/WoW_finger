@@ -85,7 +85,6 @@ class App:
         while True:
             if not self.gui_thread.is_alive():
                 exit()
-            key_sent = False
             if not self.PAUSE and self.is_correct_window():
                 for kp in list(self.key_pressed):
                     for _ in range(5):
@@ -97,10 +96,10 @@ class App:
                                 k.send(kp[1])
                             else:
                                 k.send(kp[0])
-                            key_sent = True
                         else:
                             break
-            time.sleep(1 if not key_sent else self.DELAY_BETWEEN_SPAM)
+                        time.sleep(self.DELAY_BETWEEN_SPAM)
+            time.sleep(1)
 
 
 if __name__ == "__main__":
