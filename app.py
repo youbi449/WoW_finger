@@ -13,7 +13,7 @@ import sys
 FORBIDDEN_KEYS = [17, 30, 31, 32, 57, 91, 28, 1]  # w, a, s, d, space, windows keycodes
 WINDOW_ALLOWED = ["World of Warcraft"]
 FRENCH_SCANC = [16, 44]
-DELAY_BETWEEN_SPAM = 0.3
+DELAY_BETWEEN_SPAM = 0.2
 
 
 class App:
@@ -23,7 +23,7 @@ class App:
         self.window_allowed = WINDOW_ALLOWED
         self.forbidden_keys = forbidden_keys
         self.DELAY_BETWEEN_SPAM = delay
-        self.key_pressed = set()
+        self.key_pressed = None
         self.keyboard_layout = locale.getlocale()[0]
         self.gui_thread = threading.Thread(
             target=GUI, args=(self.toggle_pause, self.kill_app), daemon=True
@@ -40,7 +40,10 @@ class App:
 
     def is_correct_window(self):
         active_window = gw.getActiveWindow()
-        return active_window and active_window.title in self.window_allowed
+        is_correct = active_window and active_window.title in self.window_allowed
+        if not is_correct:
+            self.key_pressed = None
+        return is_correct
 
     def toggle_pause(self):
         self.PAUSE = not self.PAUSE
@@ -50,6 +53,7 @@ class App:
         return key in self.forbidden_keys
 
     def on_action(self, e):
+
         if e.event_type == KEY_DOWN:
             self.on_key_pressed((e.scan_code, e.name.lower()))
         elif e.event_type == KEY_UP:
@@ -64,42 +68,57 @@ class App:
                 key_code not in self.forbidden_keys
                 and not k.is_modifier(key_code)
                 and not self.PAUSE
-                and key not in self.key_pressed
+                and self.key_pressed != key
             ):
-                self.key_pressed.add(key)
+                self.key_pressed = key
 
     def on_key_released(self, key):
-        if key in self.key_pressed:
-            self.key_pressed.remove(key)
+        if not k.is_pressed(key[0]) and self.key_pressed == key:
+            self.key_pressed = None
 
-    def spam_key(self, key):
-        """will spam key 5 times"""
-        for _ in range(5):
-            if key in self.key_pressed and not self.PAUSE and self.is_correct_window():
-                k.send(key)
-                time.sleep(self.DELAY_BETWEEN_SPAM)
+    def sync_keys(self):
+        for i in list(self.key_pressed):
+            if not k.is_pressed(i[0]):
+                print("key not sync !")
+                self.key_pressed.remove(i)
+        return
 
     def start(self):
         print("App is running...")
         k.hook(self.on_action)
         while True:
             if not self.gui_thread.is_alive():
+                print("GUI thread is not alive, exiting...")
                 exit()
-            if not self.PAUSE and self.is_correct_window():
-                for kp in list(self.key_pressed):
-                    for _ in range(5):
-                        if kp in self.key_pressed:
-                            if (
-                                self.keyboard_layout == "fr_FR"
-                                and kp[0] in FRENCH_SCANC
-                            ):
-                                k.send(kp[1])
-                            else:
-                                k.send(kp[0])
-                        else:
-                            break
-                        time.sleep(self.DELAY_BETWEEN_SPAM)
-            time.sleep(1)
+            self.process_keys()
+            time.sleep(self.DELAY_BETWEEN_SPAM)
+
+    def process_keys(self):
+        if not self.PAUSE and self.is_correct_window() and self.key_pressed is not None:
+            print(f"Processing key: {self.key_pressed}")
+            self.spam_key_if_needed(self.key_pressed)
+
+    def spam_key_if_needed(self, kp):
+        if kp is None:
+            return
+        for _ in range(5):
+            if self.key_pressed == kp and not self.PAUSE and self.is_correct_window():
+                print(f"Spamming key: {kp}")
+                self.send_key(kp)
+            else:
+                print(f"Stopping spam for key: {kp}")
+                break
+            time.sleep(self.DELAY_BETWEEN_SPAM)
+
+    def send_key(self, kp):
+        if kp is None:
+            return
+        if self.keyboard_layout == "fr_FR" and kp[0] in FRENCH_SCANC:
+            print(f"Sending key (FR layout): {kp[1]}")
+            k.send(kp[1])
+        else:
+            print(f"Sending key: {kp[0]}")
+            k.send(kp[0])
 
 
 if __name__ == "__main__":
