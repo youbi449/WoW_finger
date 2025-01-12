@@ -116,13 +116,17 @@ class App:
             self.logger.error(f"Error in keyboard event handler: {str(e)}")
 
     def on_key_pressed(self, key):
-        """Handle key press events"""
+        """
+        Handle key press events.
+        Manages pause toggle with CTRL + F1 and key spam functionality.
+        """
         try:
             key_code, key_name = key
             if not self.is_correct_window():
                 return
 
-            if key_code == self.config.pause_key_code:
+            # Check for CTRL + F1 combination
+            if key_code == self.config.pause_key_code and k.is_pressed('ctrl'):
                 self.toggle_pause()
             elif (
                 key_code not in self.forbidden_keys
@@ -170,20 +174,18 @@ class App:
             self.logger.error(f"Error in key spam routine: {str(e)}")
 
     def send_key(self, kp):
-        """Send a keyboard event"""
+        """
+        Send a keyboard event using scan codes for better keyboard layout compatibility.
+        Args:
+            kp (tuple): Tuple containing (scan_code, key_name)
+        """
         if kp is None:
             return
 
         try:
-            # Use key name instead of scan code for better layout compatibility
-            key_name = kp[1]
-            if key_name:
-                self.logger.debug(f"Sending key: {key_name}")
-                k.send(key_name)
-            else:
-                # Fallback to scan code if name is not available
-                self.logger.debug(f"Sending key code: {kp[0]}")
-                k.send(kp[0])
+            scan_code = kp[0]
+            self.logger.debug(f"Sending key scan code: {scan_code}")
+            k.send(scan_code)
         except Exception as e:
             self.logger.error(f"Error sending key event: {str(e)}")
 

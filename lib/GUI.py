@@ -1,11 +1,13 @@
 import tkinter as tk
 import sys
-import keyboard
 from lib.Config import Config
 
 
 def GUI(toggle_pause, kill_app):
-
+    """
+    Create and manage the graphical user interface for the WoW Finger application.
+    Displays the application status and controls for pausing/stopping the application.
+    """
     config = Config()
     window = tk.Tk()
     window.title("WoW Finger")
@@ -15,27 +17,7 @@ def GUI(toggle_pause, kill_app):
     button_start = tk.Button(window, text="Start/Stop", command=toggle_pause)
     button_start.pack(padx=20, pady=20)
 
-    label_pause_key = tk.Label(window, text="Pause Key")
-    label_pause_key.pack(padx=20, pady=10)
-
-    default_pause_key = config.pause_key
-    entry_pause_key = tk.Entry(window)
-    entry_pause_key.insert(0, default_pause_key)
-    entry_pause_key.pack(padx=20, pady=10)
-
-    def _set_pause_key():
-        info_label.config(text="")
-        key = entry_pause_key.get()
-
-        try:
-            if keyboard.key_to_scan_codes(key, True):
-                config.set_pause_key(key)
-        except ValueError as error_msg:
-            info_label.config(text=error_msg)
-
-    button_set = tk.Button(window, text="Set hotkey to PAUSE", command=_set_pause_key)
-    button_set.pack(padx=20, pady=10)
-    info_label = tk.Label(window, text="")
-    info_label.pack(padx=20, pady=10)
+    pause_info = tk.Label(window, text="Press CTRL + F1 to toggle pause", font=("Arial", 10, "bold"))
+    pause_info.pack(padx=20, pady=10)
 
     window.mainloop()

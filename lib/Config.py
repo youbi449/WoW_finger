@@ -5,6 +5,10 @@ import sys
 
 
 class Config(Observable):
+    """
+    Configuration class for WoW Finger application.
+    Manages application settings and configuration persistence.
+    """
     _instance = None
 
     def __new__(cls, *args, **kwargs):
@@ -17,9 +21,9 @@ class Config(Observable):
             super().__init__()
             self.app_path = app_path or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             self.config_path = os.path.join(self.app_path, "config.ini")
-            self.pause_key = None
-            self.pause_key_code = None
-            self.get_pause_key()
+            # Fixed pause key combination: CTRL + F1
+            self.pause_key = "ctrl+f1"
+            self.pause_key_code = k.key_to_scan_codes('f1', True)[0]  # We'll check for CTRL in the app logic
             self.initialized = True
 
     def get_pause_key(self):
