@@ -1,6 +1,32 @@
-__pycache
-build
-dist
-main.spec
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build and distribution directories
+build/
+dist/
+
+# PyInstaller files
+*.spec
+
+# Configuration and local files
 config.ini
-test
+run.bat
+
+# Test directory
+test/
+
+# Log files
+*.log
+wow_finger.log
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Windows specific
+Thumbs.db
+desktop.ini

@@ -1,4 +1,6 @@
-
 pygetwindow
 pynput
 pyinstaller
+keyboard
+plyer
+winotify
