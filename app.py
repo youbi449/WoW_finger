@@ -6,22 +6,51 @@ import locale
 from keyboard._keyboard_event import KEY_DOWN, KEY_UP
 import threading
 from lib.GUI import GUI
-from winotify import Notification
 import logging
 import sys
 import os
 import ctypes
+from ctypes import wintypes
+import win32gui
+import win32con
+import win32api
+import winsound
+
+# Define keyboard layout constants
+QWERTY_LAYOUT_ID = 0x0409  # US English QWERTY layout ID
 
 FORBIDDEN_KEYS = [17, 30, 31, 32, 57, 91, 28, 1]  # w, a, s, d, space, windows keycodes
 WINDOW_ALLOWED = ["World of Warcraft"]
 DELAY_BETWEEN_SPAM = 0.2
 
+def set_keyboard_layout():
+    """
+    Force the keyboard layout to US QWERTY for the application.
+    This ensures consistent key mapping regardless of physical keyboard layout.
+    """
+    try:
+        # Get the current thread ID
+        thread_id = win32api.GetCurrentThreadId()
+        # Load the US English (QWERTY) keyboard layout
+        layout = win32api.LoadKeyboardLayout("00000409", win32con.KLF_ACTIVATE)
+        # Set the keyboard layout for the current thread
+        result = win32api.PostMessage(win32con.HWND_BROADCAST, win32con.WM_INPUTLANGCHANGEREQUEST, 0, layout)
+        return True
+    except Exception as e:
+        logging.error(f"Failed to set keyboard layout: {e}")
+        return False
+
 class App:
     """
     Main application class for WoW Finger.
     Handles keyboard events and window management for World of Warcraft automation.
+    Uses QWERTY layout for consistent key mapping regardless of physical keyboard.
     """
     def __init__(self, forbidden_keys, delay):
+        # Set keyboard layout to QWERTY
+        if not set_keyboard_layout():
+            logging.warning("Failed to set keyboard layout to QWERTY. Key mapping might be inconsistent.")
+
         # Get the application path
         if getattr(sys, 'frozen', False):
             self.application_path = os.path.dirname(sys.executable)
@@ -46,6 +75,9 @@ class App:
         self.forbidden_keys = forbidden_keys
         self.DELAY_BETWEEN_SPAM = delay
         self.key_pressed = None
+        self.last_spam_time = 0  # Track last spam time
+        self.spam_count = 0      # Track number of spams
+        self.MAX_SPAM_PER_SECOND = 8  # Safety limit for spams per second
         
         # Start GUI in separate thread
         try:
@@ -71,19 +103,15 @@ class App:
             self.logger.error(f"Error during application shutdown: {str(e)}")
             sys.exit(1)
 
-    def notif(self, msg):
-        """Send a system notification using Windows notifications"""
+    def play_toggle_sound(self, is_paused):
+        """Play a sound to indicate the toggle state"""
         try:
-            toast = Notification(
-                app_id="WoW Finger",
-                title="WoW Finger",
-                msg=msg,
-                duration="short"
-            )
-            toast.show()
-            self.logger.debug(f"Notification sent: {msg}")
+            # Different frequencies for different states
+            freq = 800 if is_paused else 1000
+            duration = 200  # milliseconds
+            winsound.Beep(freq, duration)
         except Exception as e:
-            self.logger.warning(f"Failed to send notification: {str(e)}")
+            self.logger.error(f"Error playing sound: {str(e)}")
 
     def is_correct_window(self):
         """Check if the active window is World of Warcraft"""
@@ -100,10 +128,13 @@ class App:
 
     def toggle_pause(self):
         """Toggle the pause state of the application"""
-        self.PAUSE = not self.PAUSE
-        state = "Paused" if self.PAUSE else "Unpaused"
-        self.logger.info(f"Application state changed to: {state}")
-        self.notif(state)
+        try:
+            self.PAUSE = not self.PAUSE
+            state = "Paused" if self.PAUSE else "Unpaused"
+            self.logger.info(f"Application state changed to: {state}")
+            self.play_toggle_sound(self.PAUSE)
+        except Exception as e:
+            self.logger.error(f"Error in toggle_pause: {str(e)}")
 
     def on_action(self, e):
         """Handle keyboard events"""
@@ -122,13 +153,18 @@ class App:
         """
         try:
             key_code, key_name = key
+            
+            # Check for CTRL + F1 combination first, regardless of window
+            if key_code == self.config.pause_key_code and k.is_pressed('ctrl'):
+                self.logger.debug("CTRL + F1 detected, toggling pause state")
+                self.toggle_pause()
+                return
+
+            # Other key checks only if in correct window
             if not self.is_correct_window():
                 return
 
-            # Check for CTRL + F1 combination
-            if key_code == self.config.pause_key_code and k.is_pressed('ctrl'):
-                self.toggle_pause()
-            elif (
+            if (
                 key_code not in self.forbidden_keys
                 and not k.is_modifier(key_code)
                 and not self.PAUSE
@@ -149,45 +185,80 @@ class App:
             self.logger.error(f"Error handling key release: {str(e)}")
 
     def process_keys(self):
-        """Process active keys and trigger actions"""
+        """
+        Process active keys and trigger actions.
+        Implements rate limiting and safety checks for key spamming.
+        """
         try:
             if not self.PAUSE and self.is_correct_window() and self.key_pressed is not None:
                 self.logger.debug(f"Processing key: {self.key_pressed}")
-                self.spam_key_if_needed(self.key_pressed)
+                current_time = time.time()
+                
+                # Reset spam count if more than 1 second has passed
+                if current_time - self.last_spam_time > 1:
+                    self.spam_count = 0
+                    
+                if self.spam_count < self.MAX_SPAM_PER_SECOND:
+                    self.spam_key(self.key_pressed)
+                    self.last_spam_time = current_time
+                    self.spam_count += 1
+                else:
+                    # Add a small delay if we've hit the spam limit
+                    time.sleep(0.1)
+                    
         except Exception as e:
             self.logger.error(f"Error processing keys: {str(e)}")
-
-    def spam_key_if_needed(self, kp):
-        """Handle key spamming logic"""
-        if kp is None:
-            return
-
-        try:
-            for _ in range(5):
-                if self.key_pressed != kp or self.PAUSE or not self.is_correct_window():
-                    self.logger.debug(f"Stopping spam for key: {kp}")
-                    break
-
-                self.send_key(kp)
-                time.sleep(self.DELAY_BETWEEN_SPAM)
-        except Exception as e:
-            self.logger.error(f"Error in key spam routine: {str(e)}")
-
-    def send_key(self, kp):
+            
+    def spam_key(self, key_info):
         """
-        Send a keyboard event using scan codes for better keyboard layout compatibility.
+        Handles the key spamming logic with improved timing and safety checks.
+        
         Args:
-            kp (tuple): Tuple containing (scan_code, key_name)
+            key_info (tuple): Tuple containing (scan_code, key_name)
         """
-        if kp is None:
+        if key_info is None:
             return
 
         try:
-            scan_code = kp[0]
-            self.logger.debug(f"Sending key scan code: {scan_code}")
-            k.send(scan_code)
+            key_name = key_info[1]
+            
+            # Verify the key is still being held down
+            if not k.is_pressed(key_name):
+                self.key_pressed = None
+                return
+                
+            # Send the key event
+            self.send_key(key_info)
+            
+            # Add a small dynamic delay based on system performance
+            actual_delay = max(self.DELAY_BETWEEN_SPAM * 0.8, 0.05)
+            time.sleep(actual_delay)
+            
+        except Exception as e:
+            self.logger.error(f"Error in spam_key: {str(e)}")
+            self.key_pressed = None  # Reset on error
+
+    def send_key(self, key_info):
+        """
+        Sends a keyboard event with improved error handling and QWERTY layout compatibility.
+        Uses scan codes to ensure consistent key mapping regardless of physical keyboard layout.
+        
+        Args:
+            key_info (tuple): Tuple containing (scan_code, key_name)
+        """
+        if key_info is None:
+            return
+
+        try:
+            scan_code = key_info[0]
+            
+            # Send the key event using scan code for layout independence
+            k.send(scan_code, do_press=True, do_release=True)
+            self.logger.debug(f"Sending key with scan code: {scan_code}")
+            
         except Exception as e:
             self.logger.error(f"Error sending key event: {str(e)}")
+            self.key_pressed = None  # Reset key state on error
 
     def start(self):
         """Start the application main loop"""

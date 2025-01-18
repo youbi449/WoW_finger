@@ -9,11 +9,13 @@ WoW Finger is a tool crafted for wow players to automate repetitive key presses.
 - **Start and Stop the Application:** Easily control the automation with start and stop functions through a user-friendly graphical interface.
 - **Pause During Chat Typing:** The tool smartly pauses the automation when it detects typing in the game chat.
 - **Support for Specific Keys:** It only automates non-modifier and allowed keys to ensure game compliance.
+- **QWERTY Layout Support:** The application uses QWERTY keyboard layout internally, ensuring consistent key mapping regardless of your physical keyboard layout or Windows settings.
 
 ## Prerequisites
 
 - Python 3.x
 - Python libraries listed in `requirements.txt`
+- Windows operating system
 
 ## Installation
 

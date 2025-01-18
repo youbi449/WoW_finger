@@ -4,3 +4,4 @@ pyinstaller
 keyboard
 plyer
 winotify
+pywin32
