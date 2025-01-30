@@ -6,6 +6,7 @@ python -m PyInstaller --clean ^
     --onefile ^
     --windowed ^
     --add-data "lib;lib" ^
+    --icon "lib/wow_finger.ico" ^
     --add-data "config.ini;." ^
     --name "wow_finger" ^
     app.py
