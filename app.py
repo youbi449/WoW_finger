@@ -101,17 +101,16 @@ class App:
             self.logger.error(f"Failed to initialize status overlay: {e}", exc_info=True)
             self.overlay = None
         
-        # Start GUI in separate thread
+        # Start main processing in a separate thread
         try:
-            self.gui_thread = threading.Thread(
-                target=GUI, 
-                args=(self.toggle_pause, self.kill_app), 
+            self.main_thread = threading.Thread(
+                target=self.main_loop,
                 daemon=True
             )
-            self.gui_thread.start()
-            self.logger.info("GUI thread started successfully")
+            self.main_thread.start()
+            self.logger.info("Main processing thread started successfully")
         except Exception as e:
-            self.logger.error(f"Failed to start GUI thread: {str(e)}")
+            self.logger.error(f"Failed to start main processing thread: {str(e)}")
             raise
 
     def kill_app(self):
@@ -253,20 +252,26 @@ class App:
             self.logger.error(f"Error sending key event: {str(e)}")
             self.key_pressed = None  # Reset key state on error
 
-    def start(self):
-        """Start the application main loop"""
-        self.logger.info("Starting application main loop")
+    def main_loop(self):
+        """Main processing loop running in a separate thread"""
+        self.logger.info("Starting main processing loop")
         try:
             k.hook(self.on_action)
             while True:
-                if not self.gui_thread.is_alive():
-                    self.logger.warning("GUI thread terminated, shutting down")
-                    self.kill_app()
-                
                 self.process_keys()
                 time.sleep(self.DELAY_BETWEEN_SPAM)
         except Exception as e:
             self.logger.critical(f"Critical error in main loop: {str(e)}")
+            self.kill_app()
+
+    def start(self):
+        """Start the application with GUI in main thread"""
+        self.logger.info("Starting application with GUI")
+        try:
+            # Run GUI in main thread
+            GUI(self.toggle_pause, self.kill_app)
+        except Exception as e:
+            self.logger.critical(f"Critical error starting GUI: {str(e)}")
             self.kill_app()
 
     def is_correct_window(self):
@@ -298,7 +303,7 @@ if __name__ == "__main__":
             sys.exit(0)
             
         app = App(forbidden_keys=FORBIDDEN_KEYS, delay=DELAY_BETWEEN_SPAM)
-        app.start()
+        app.start()  # This will now run GUI in main thread
     except Exception as e:
         logging.critical(f"Application failed to start: {str(e)}")
         sys.exit(1)
