@@ -80,6 +80,7 @@ class App:
         # Core components initialization
         self.config = Config(self.application_path)
         self.PAUSE = True
+        self.is_running = True  # New flag to control application lifecycle
         self.window_allowed = WINDOW_ALLOWED
         self.forbidden_keys = forbidden_keys
         self.DELAY_BETWEEN_SPAM = delay
@@ -90,10 +91,10 @@ class App:
             self.logger.debug("Creating status overlay...")
             self.overlay = WebOverlay(self.config)
             
-            # Start overlay in a separate thread
+            # Start overlay in a separate thread - no longer daemon
             self.overlay_thread = threading.Thread(
                 target=self.overlay.start,
-                daemon=True
+                daemon=False
             )
             self.overlay_thread.start()
             self.logger.info("Status overlay initialized successfully")
@@ -101,11 +102,11 @@ class App:
             self.logger.error(f"Failed to initialize status overlay: {e}", exc_info=True)
             self.overlay = None
         
-        # Start main processing in a separate thread
+        # Start main processing in a separate thread - no longer daemon
         try:
             self.main_thread = threading.Thread(
                 target=self.main_loop,
-                daemon=True
+                daemon=False
             )
             self.main_thread.start()
             self.logger.info("Main processing thread started successfully")
@@ -114,17 +115,28 @@ class App:
             raise
 
     def kill_app(self):
-        """Safely terminate the application"""
+        """Force kill the application process"""
         try:
-            self.logger.info("Shutting down application")
-            self.PAUSE = True
-            if self.overlay:
-                self.overlay.destroy()
+            # Unhook keyboard
             k.unhook_all()
-            sys.exit(0)
-        except Exception as e:
-            self.logger.error(f"Error during application shutdown: {str(e)}")
-            sys.exit(1)
+            
+            # Kill the current process
+            current_pid = os.getpid()
+            
+            def force_kill():
+                try:
+                    # On Windows, use taskkill pour forcer la fermeture
+                    os.system(f'taskkill /F /PID {current_pid}')
+                except:
+                    os._exit(1)
+            
+            # Lancer le kill dans un process séparé
+            killer = multiprocessing.Process(target=force_kill)
+            killer.start()
+            
+        except:
+            # Si tout échoue, on force quand même la sortie
+            os._exit(1)
 
     def toggle_pause(self):
         """Toggle the pause state of the application"""
@@ -257,9 +269,10 @@ class App:
         self.logger.info("Starting main processing loop")
         try:
             k.hook(self.on_action)
-            while True:
+            while self.is_running:  # Use is_running flag instead of True
                 self.process_keys()
                 time.sleep(self.DELAY_BETWEEN_SPAM)
+            self.logger.info("Main loop terminated cleanly")
         except Exception as e:
             self.logger.critical(f"Critical error in main loop: {str(e)}")
             self.kill_app()
