@@ -1,7 +1,5 @@
-pygetwindow
-pynput
-pyinstaller
-keyboard
-plyer
-winotify
-pywin32
+keyboard==0.13.5
+PyGetWindow==0.0.9
+plyer==2.1.0
+pywin32==306
+pywebview==4.4.1

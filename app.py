@@ -6,6 +6,7 @@ import locale
 from keyboard._keyboard_event import KEY_DOWN, KEY_UP
 import threading
 from lib.GUI import GUI
+from lib.WebOverlay import WebOverlay
 import logging
 import sys
 import os
@@ -14,27 +15,35 @@ from ctypes import wintypes
 import win32gui
 import win32con
 import win32api
-import winsound
+import multiprocessing
 
 # Define keyboard layout constants
 QWERTY_LAYOUT_ID = 0x0409  # US English QWERTY layout ID
 
 FORBIDDEN_KEYS = [17, 30, 31, 32, 57, 91, 28, 1]  # w, a, s, d, space, windows keycodes
 WINDOW_ALLOWED = ["World of Warcraft"]
-DELAY_BETWEEN_SPAM = 0.2
+DELAY_BETWEEN_SPAM = 0.1  # Reduced from 0.2 to 0.1 seconds for faster spam
 
 def set_keyboard_layout():
     """
-    Force the keyboard layout to US QWERTY for the application.
-    This ensures consistent key mapping regardless of physical keyboard layout.
+    Set keyboard layout to US QWERTY for the current thread only.
+    This ensures consistent key mapping without affecting the system-wide layout.
     """
     try:
         # Get the current thread ID
         thread_id = win32api.GetCurrentThreadId()
+        
         # Load the US English (QWERTY) keyboard layout
         layout = win32api.LoadKeyboardLayout("00000409", win32con.KLF_ACTIVATE)
-        # Set the keyboard layout for the current thread
-        result = win32api.PostMessage(win32con.HWND_BROADCAST, win32con.WM_INPUTLANGCHANGEREQUEST, 0, layout)
+        
+        # Set the keyboard layout for the current thread only
+        user32 = ctypes.WinDLL('user32', use_last_error=True)
+        result = user32.ActivateKeyboardLayout(layout, 0)
+        
+        # Set the input locale for the current thread
+        if not user32.SetThreadInputLocale(layout):
+            raise ctypes.WinError(ctypes.get_last_error())
+            
         return True
     except Exception as e:
         logging.error(f"Failed to set keyboard layout: {e}")
@@ -44,12 +53,12 @@ class App:
     """
     Main application class for WoW Finger.
     Handles keyboard events and window management for World of Warcraft automation.
-    Uses QWERTY layout for consistent key mapping regardless of physical keyboard.
+    Uses thread-local QWERTY layout for consistent key mapping while preserving system layout.
     """
     def __init__(self, forbidden_keys, delay):
-        # Set keyboard layout to QWERTY
+        # Set keyboard layout for current thread only
         if not set_keyboard_layout():
-            logging.warning("Failed to set keyboard layout to QWERTY. Key mapping might be inconsistent.")
+            logging.warning("Failed to set keyboard layout for current thread. Key mapping might be inconsistent.")
 
         # Get the application path
         if getattr(sys, 'frozen', False):
@@ -61,23 +70,36 @@ class App:
         log_path = os.path.join(self.application_path, 'wow_finger.log')
         logging.basicConfig(
             filename=log_path,
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
+            level=logging.DEBUG,
+            format='%(asctime)s - %(levelname)s - %(module)s - %(message)s'
         )
         self.logger = logging.getLogger(__name__)
         self.logger.info("Initializing WoW Finger application")
         self.logger.info(f"Application path: {self.application_path}")
 
         # Core components initialization
-        self.config = Config(self.application_path)  # Pass application path to Config
+        self.config = Config(self.application_path)
         self.PAUSE = True
         self.window_allowed = WINDOW_ALLOWED
         self.forbidden_keys = forbidden_keys
         self.DELAY_BETWEEN_SPAM = delay
         self.key_pressed = None
-        self.last_spam_time = 0  # Track last spam time
-        self.spam_count = 0      # Track number of spams
-        self.MAX_SPAM_PER_SECOND = 8  # Safety limit for spams per second
+        
+        # Initialize status overlay
+        try:
+            self.logger.debug("Creating status overlay...")
+            self.overlay = WebOverlay(self.config)
+            
+            # Start overlay in a separate thread
+            self.overlay_thread = threading.Thread(
+                target=self.overlay.start,
+                daemon=True
+            )
+            self.overlay_thread.start()
+            self.logger.info("Status overlay initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize status overlay: {e}", exc_info=True)
+            self.overlay = None
         
         # Start GUI in separate thread
         try:
@@ -97,44 +119,30 @@ class App:
         try:
             self.logger.info("Shutting down application")
             self.PAUSE = True
+            if self.overlay:
+                self.overlay.destroy()
             k.unhook_all()
             sys.exit(0)
         except Exception as e:
             self.logger.error(f"Error during application shutdown: {str(e)}")
             sys.exit(1)
 
-    def play_toggle_sound(self, is_paused):
-        """Play a sound to indicate the toggle state"""
-        try:
-            # Different frequencies for different states
-            freq = 800 if is_paused else 1000
-            duration = 200  # milliseconds
-            winsound.Beep(freq, duration)
-        except Exception as e:
-            self.logger.error(f"Error playing sound: {str(e)}")
-
-    def is_correct_window(self):
-        """Check if the active window is World of Warcraft"""
-        try:
-            active_window = gw.getActiveWindow()
-            is_correct = active_window and active_window.title in self.window_allowed
-            if not is_correct and self.key_pressed is not None:
-                self.key_pressed = None
-                self.logger.debug("Key pressed reset due to window change")
-            return is_correct
-        except Exception as e:
-            self.logger.error(f"Error checking window: {str(e)}")
-            return False
-
     def toggle_pause(self):
         """Toggle the pause state of the application"""
         try:
+            # Toggle state
             self.PAUSE = not self.PAUSE
             state = "Paused" if self.PAUSE else "Unpaused"
             self.logger.info(f"Application state changed to: {state}")
-            self.play_toggle_sound(self.PAUSE)
+            
+            # Update overlay
+            if self.overlay:
+                is_active = not self.PAUSE  # When PAUSE is False, app is active (ON)
+                self.logger.debug(f"Setting overlay to: {'ON' if is_active else 'OFF'}")
+                self.overlay.update_status(is_active)
+                self.logger.debug("Overlay update completed")
         except Exception as e:
-            self.logger.error(f"Error in toggle_pause: {str(e)}")
+            self.logger.error(f"Error in toggle_pause: {str(e)}", exc_info=True)
 
     def on_action(self, e):
         """Handle keyboard events"""
@@ -187,25 +195,11 @@ class App:
     def process_keys(self):
         """
         Process active keys and trigger actions.
-        Implements rate limiting and safety checks for key spamming.
+        Continuously sends key events while the key is held down.
         """
         try:
             if not self.PAUSE and self.is_correct_window() and self.key_pressed is not None:
-                self.logger.debug(f"Processing key: {self.key_pressed}")
-                current_time = time.time()
-                
-                # Reset spam count if more than 1 second has passed
-                if current_time - self.last_spam_time > 1:
-                    self.spam_count = 0
-                    
-                if self.spam_count < self.MAX_SPAM_PER_SECOND:
-                    self.spam_key(self.key_pressed)
-                    self.last_spam_time = current_time
-                    self.spam_count += 1
-                else:
-                    # Add a small delay if we've hit the spam limit
-                    time.sleep(0.1)
-                    
+                self.spam_key(self.key_pressed)
         except Exception as e:
             self.logger.error(f"Error processing keys: {str(e)}")
             
@@ -230,9 +224,8 @@ class App:
             # Send the key event
             self.send_key(key_info)
             
-            # Add a small dynamic delay based on system performance
-            actual_delay = max(self.DELAY_BETWEEN_SPAM * 0.8, 0.05)
-            time.sleep(actual_delay)
+            # Minimal delay to prevent system overload
+            time.sleep(self.DELAY_BETWEEN_SPAM)
             
         except Exception as e:
             self.logger.error(f"Error in spam_key: {str(e)}")
@@ -275,6 +268,19 @@ class App:
         except Exception as e:
             self.logger.critical(f"Critical error in main loop: {str(e)}")
             self.kill_app()
+
+    def is_correct_window(self):
+        """Check if the active window is World of Warcraft"""
+        try:
+            active_window = gw.getActiveWindow()
+            is_correct = active_window and active_window.title in self.window_allowed
+            if not is_correct and self.key_pressed is not None:
+                self.key_pressed = None
+                self.logger.debug("Key pressed reset due to window change")
+            return is_correct
+        except Exception as e:
+            self.logger.error(f"Error checking window: {str(e)}")
+            return False
 
 def is_admin():
     """Check if the program is running with administrator privileges"""
