@@ -89,7 +89,7 @@ class App:
         # Initialize status overlay
         try:
             self.logger.debug("Creating status overlay...")
-            self.overlay = WebOverlay(self.config)
+            self.overlay = WebOverlay(self.config, self.toggle_pause)
             
             # Start overlay in a separate thread - no longer daemon
             self.overlay_thread = threading.Thread(

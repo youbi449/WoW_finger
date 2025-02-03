@@ -4,12 +4,13 @@ import threading
 import queue
 
 class WebOverlay:
-    def __init__(self, config):
+    def __init__(self, config, toggle_pause_callback=None):
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.window = None
         self.is_active = False
         self.update_queue = queue.Queue()
+        self.toggle_pause_callback = toggle_pause_callback
         
     def _create_window(self):
         """Create the overlay window"""
@@ -37,6 +38,10 @@ class WebOverlay:
                 height=1
             )
             self.status_label.pack(expand=True, fill='both')
+            
+            # Add click event if callback is provided
+            if self.toggle_pause_callback:
+                self.status_label.bind('<Button-1>', lambda e: self.toggle_pause_callback())
             
             # Configure update checking
             self.window.after(100, self._check_updates)
